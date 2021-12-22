@@ -18,8 +18,6 @@ class HungarianMatcher(nn.Module):
     while the others are un-matched (and thus treated as non-objects).
     """
 
-    #def __init__(self, cost_class: float = 1, cost_bbox: float = 1, cost_giou: float = 1):
-    #def __init__(self, cost_class: float = 1, cost_kpts: float = 1, cost_kpts_class: float = 1):
     def __init__(self, cost_class: float = 1, cost_kpts: float = 1, cost_ctrs: float = 1,
                 cost_deltas: float = 1, cost_kpts_class: float = 1, oks = False):
         """Creates the matcher
@@ -31,11 +29,6 @@ class HungarianMatcher(nn.Module):
         """
         super().__init__()
         self.cost_class = cost_class
-        """
-        self.cost_bbox = cost_bbox
-        self.cost_giou = cost_giou
-        assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0, "all costs cant be 0"
-        """
         self.cost_kpts = cost_kpts
         self.cost_ctrs = cost_ctrs
         self.cost_deltas = cost_deltas
@@ -70,12 +63,10 @@ class HungarianMatcher(nn.Module):
 
         # We flatten to compute the cost matrices in a batch
         out_prob = outputs["pred_logits"].flatten(0, 1).softmax(-1)  # [batch_size * num_queries, num_classes]
-        #out_bbox = outputs["pred_boxes"].flatten(0, 1)  # [batch_size * num_queries, 4]
         out_kpts = outputs["pred_kpts"].flatten(0, 1)  # [batch_size * num_queries, 53]
 
         # Also concat the target labels and boxes
         tgt_ids = torch.cat([v["labels"] for v in targets])
-        #tgt_bbox = torch.cat([v["boxes"] for v in targets])
         tgt_kpts = torch.cat([v["keypoints"] for v in targets])
 
         if self.oks:
@@ -165,8 +156,6 @@ class HungarianMatcher(nn.Module):
 
             # Compute the L2 cost between keypoints classes
             cost_kpts_class = torch.cdist(out_kpts_ids, tgt_kpts_ids, p=2)
-            #cost_kpts_class = F.cross_entropy(out_kpts_ids, tgt_kpts_ids)
-            #cost_kpts_class = nn.BCELoss(out_kpts_ids, tgt_kpts_ids.bool())
             
         else:
             #have mask on predicted keypoints (and keypoints classes) when target keypoints are invisible
@@ -204,8 +193,6 @@ class HungarianMatcher(nn.Module):
                 cost_ctrs[:, i, None] = torch.cdist(out_kpts[:,:2,i], tgt_kpts[i,:2].unsqueeze(0), p=2)
                 # L2 cost of keypoint classes
                 cost_kpts_class[:, i, None] = torch.cdist(src_kpts_ids, target_kpts_ids[i,:].unsqueeze(0), p=2)
-                #cost_kpts_class[:, i, None] = F.cross_entropy(src_kpts_ids, target_kpts_ids[i,:].unsqueeze(0))
-                #cost_kpts_class[:, i, None] = nn.BCELoss(src_kpts_ids, target_kpts_ids[i,:].unsqueeze(0).bool())
 
 
         if self.oks:
@@ -256,26 +243,16 @@ class HungarianMatcher(nn.Module):
                     #cost_kpts[j, i, None] = torch.cdist(out_kpts[j,2:,i], tgt_kpts[i,2:].unsqueeze(0), p=2)
             '''
 
-        # Compute the L1 cost between boxes
-        #cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
-
-        # Compute the giou cost betwen boxes
-        #cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox), box_cxcywh_to_xyxy(tgt_bbox))
 
         # Final cost matrix
-        #C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou
-        #C = self.cost_kpts * cost_kpts + self.cost_class * cost_class + self.cost_kpts_class * cost_kpts_class
-        #C = self.cost_kpts * cost_kpts + self.cost_ctrs * cost_ctrs + self.cost_class * cost_class + self.cost_kpts_class * cost_kpts_class
         C = self.cost_kpts * cost_kpts + self.cost_ctrs * cost_ctrs + self.cost_deltas * cost_deltas + self.cost_class * cost_class + self.cost_kpts_class * cost_kpts_class
         C = C.view(bs, num_queries, -1).cpu()
 
-        #sizes = [len(v["boxes"]) for v in targets]
         sizes = [len(v["keypoints"]) for v in targets]
         indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))]
         return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
 
 
 def build_matcher(args):
-    #return HungarianMatcher(cost_class=args.set_cost_class, cost_bbox=args.set_cost_bbox, cost_giou=args.set_cost_giou)
     return HungarianMatcher(cost_class=args.set_cost_class, cost_kpts=args.set_cost_kpts, cost_ctrs=args.set_cost_ctrs,
                             cost_deltas=args.set_cost_deltas, cost_kpts_class=args.set_cost_kpts_class, oks=args.oks_loss)

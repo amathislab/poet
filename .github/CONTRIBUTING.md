@@ -1,4 +1,4 @@
-# Contributing to DETR
+# Contributing to POET
 We want to make contributing to this project as easy and transparent as
 possible.
 
@@ -35,5 +35,5 @@ outlined on that page and do not file a public issue.
 * PEP8 formatting following [Black](https://black.readthedocs.io/en/stable/)
 
 ## License
-By contributing to DETR, you agree that your contributions will be licensed
+By contributing to POET, you agree that your contributions will be licensed
 under the LICENSE file in the root directory of this source tree.

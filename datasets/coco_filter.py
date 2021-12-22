@@ -3,7 +3,6 @@ import json
 from tqdm import tqdm
 
 path = '/media/data/lucas/COCO/'
-#path = '/home/lucas/Projects/data/COCO/'
 mode = 'train'
 keep_images_with_x_persons = False
 nr_persons = 1

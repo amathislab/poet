@@ -6,22 +6,14 @@ import torch
 
 COCO_CLASSES = [
     "nose",
-    "left_eye",
-    "right_eye",
-    "left_ear",
-    "right_ear",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-    "left_hip",
-    "right_hip",
-    "left_knee",
-    "right_knee",
-    "left_ankle",
-    "right_ankle",
+    "left_eye", "right_eye",
+    "left_ear", "right_ear",
+    "left_shoulder", "right_shoulder",
+    "left_elbow", "right_elbow",
+    "left_wrist", "right_wrist",
+    "left_hip", "right_hip",
+    "left_knee", "right_knee",
+    "left_ankle", "right_ankle",
 ]
 
 SKELETON = [ [16,14],[14,12],[17,15],[15,13],[12,13],[6,12],[7,13],[6,7],[6,8],
@@ -54,7 +46,6 @@ def kpts_cxcydxdy_to_xyxy():
 def kpts_xyxy_to_cxcydxdy(kpts, ctr, hierarchical=False):
     kpts = build_HSPR(kpts, ctr) if hierarchical else build_SPR(kpts, ctr)
     return torch.cat((ctr, kpts), dim=1)
-
 
 
 # Structured Pose Representation (SPR)

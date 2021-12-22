@@ -31,11 +31,6 @@ def get_args_parser():
     parser.add_argument('--fp16', action='store_true',
                         help='If True, Automatic Mixed Precision (AMP) is used')
 
-    # Model parameters
-    """ only for segmentation
-    parser.add_argument('--frozen_weights', type=str, default=None,
-                        help="Path to the pretrained model. If set, only the mask head will be trained")
-    """
     # * Backbone
     parser.add_argument('--backbone', default='resnet50', type=str,
                         help="Name of the convolutional backbone to use")
@@ -68,13 +63,7 @@ def get_args_parser():
     parser.add_argument('--pre_norm', action='store_true')
     # possible add-on
     #parser.add_argument('--deformable', action='store_false',
-    #                    help="usage of deformable DETR")
-
-    """
-    # * Segmentation
-    parser.add_argument('--masks', action='store_true',
-                        help="Train segmentation head if the flag is provided")
-    """
+    #                    help="usage of deformable POET")
     
     # Loss
     parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',
@@ -85,12 +74,6 @@ def get_args_parser():
     # * Matcher
     parser.add_argument('--set_cost_class', default=1, type=float,
                         help="Class coefficient in the matching cost")
-    """
-    parser.add_argument('--set_cost_bbox', default=5, type=float,
-                        help="L1 box coefficient in the matching cost")
-    parser.add_argument('--set_cost_giou', default=2, type=float,
-                        help="giou box coefficient in the matching cost")
-    """
     parser.add_argument('--set_cost_kpts', default=5, type=float,
                         help="L1 kpts coefficient in the matching cost")
     parser.add_argument('--set_cost_ctrs', default=1, type=float,
@@ -99,19 +82,12 @@ def get_args_parser():
                         help="L1 offsets coefficient in the matching cost")
     parser.add_argument('--set_cost_kpts_class', default=2, type=float,
                         help="kpts class coefficient in the matching cost")
-    #parser.add_argument('--set_cost_boxiou', default=2, type=float,
-    #                    help='giou box coefficient in the matching cost')
     
     # * Loss coefficients
-    #parser.add_argument('--mask_loss_coef', default=1, type=float)
-    #parser.add_argument('--dice_loss_coef', default=1, type=float)
-    #parser.add_argument('--bbox_loss_coef', default=5, type=float)
-    #parser.add_argument('--giou_loss_coef', default=2, type=float)
     parser.add_argument('--kpts_loss_coef', default=5, type=float)
     parser.add_argument('--kpts_class_loss_coef', default=2, type=float)
     parser.add_argument('--ctrs_loss_coef', default=1, type=float)
     parser.add_argument('--deltas_loss_coef', default=1, type=float)
-    #parser.add_argument('--boxiou_loss_coef', default=2, type=float)
     parser.add_argument('--eos_coef', default=0.1, type=float,
                         help="Relative classification weight of the no-object class")
 
@@ -130,8 +106,6 @@ def get_args_parser():
     parser.add_argument('--coco_path', type=str)
     parser.add_argument('--max_size', default=1333, type=int,
                         help='max_size of input images when resizing')
-    #parser.add_argument('--coco_panoptic_path', type=str)
-    #parser.add_argument('--remove_difficult', action='store_true')
     parser.add_argument('--coco_filter', default='',
                         help='type of annotation file to load')
 
@@ -170,11 +144,6 @@ def main(args):
     utils.init_distributed_mode(args)
     print("git:\n  {}\n".format(utils.get_sha()))
 
-    """
-    if args.frozen_weights is not None:
-        assert args.masks, "Frozen training is meant for segmentation only"
-    """
-
     # exclude deltas loss when using oks_loss
     if args.oks_loss:
         args.deltas_loss_coef = 0
@@ -212,7 +181,6 @@ def main(args):
     param_dicts = [
         {"params": [p for n, p in model_without_ddp.named_parameters() if "backbone" not in n and p.requires_grad]},
         {
-            #"params": [p for n, p in model_without_ddp.named_parameters() if "backbone" in n and p.requires_grad],
             "params": [p for n, p in model_without_ddp.named_parameters() if ("backbone" in n and p.requires_grad and not args.freeze_backbone)],
             "lr": args.lr_backbone,
         },
@@ -234,8 +202,8 @@ def main(args):
     output_dir = Path(args.output_dir)
 
     if args.overfit:
-        subset_indices = np.random.choice(1000, 4, replace=False)
-        #subset_indices = np.random.choice(1000, 1, replace=False)
+        # overfit network to 5 training samples
+        subset_indices = np.random.choice(1000, 5, replace=False)
         sampler_train = SubsetRandomSampler(subset_indices)
         sampler_val = SubsetRandomSampler(subset_indices)
         # save subset indices
@@ -260,12 +228,6 @@ def main(args):
         base_ds = get_coco_api_from_dataset(coco_val)
     else:
         base_ds = get_coco_api_from_dataset(dataset_val)
-
-    """
-    if args.frozen_weights is not None:
-        checkpoint = torch.load(args.frozen_weights, map_location='cpu')
-        model_without_ddp.detr.load_state_dict(checkpoint['model'])
-    """
 
     #output_dir = Path(args.output_dir)
     if args.resume:
@@ -376,12 +338,9 @@ def main(args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
 
-    #with (output_dir / "listR.txt").open("a") as f:
-    #    f.writelines("%s\n" % a for a in listR)
-
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
+    parser = argparse.ArgumentParser('POET training and evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)

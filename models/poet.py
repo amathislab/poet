@@ -1,6 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 """
-DETR model and criterion classes.
+POET model and criterion classes.
 """
 import torch
 import torch.nn.functional as F
@@ -13,15 +13,11 @@ from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
 
 from .backbone import build_backbone
 from .matcher import build_matcher
-"""
-from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
-                           dice_loss, sigmoid_focal_loss)
-"""
 from .transformer import build_transformer
 
 
-class DETR(nn.Module):
-    """ This is the DETR module that performs object detection """
+class POET(nn.Module):
+    """ This is the POET module that performs multi-instance pose estimation """
     def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False):
         """ Initializes the model.
         Parameters:
@@ -37,7 +33,6 @@ class DETR(nn.Module):
         self.transformer = transformer
         hidden_dim = transformer.d_model
         self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
-        #self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.kpt_embed = MLP(hidden_dim, hidden_dim, 53, 3)  # 17 keypoints(x,y,o) + center(x,y)
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
@@ -68,8 +63,6 @@ class DETR(nn.Module):
         hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])[0]
 
         outputs_class = self.class_embed(hs)
-        #outputs_coord = self.bbox_embed(hs).sigmoid()
-        #out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         outputs_coord = self.kpt_embed(hs).sigmoid()
         out = {'pred_logits': outputs_class[-1], 'pred_kpts': outputs_coord[-1]}
         if self.aux_loss:
@@ -81,18 +74,16 @@ class DETR(nn.Module):
         # this is a workaround to make torchscript happy, as torchscript
         # doesn't support dictionary with non-homogeneous values, such
         # as a dict having both a Tensor and a list.
-        #return [{'pred_logits': a, 'pred_boxes': b}
         return [{'pred_logits': a, 'pred_kpts': b}
                 for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
 
 
 class SetCriterion(nn.Module):
-    """ This class computes the loss for DETR.
+    """ This class computes the loss for POET.
     The process happens in two steps:
         1) we compute hungarian assignment between ground truth keypoints and the outputs of the model
         2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
     """
-    #def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses):
     def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses, oks):
         """ Create the criterion.
         Parameters:
@@ -114,7 +105,6 @@ class SetCriterion(nn.Module):
         empty_weight[-1] = self.eos_coef
         self.register_buffer('empty_weight', empty_weight)
 
-    #def loss_labels(self, outputs, targets, indices, num_boxes, log=True):
     def loss_labels(self, outputs, targets, indices, num_people, log=True):
         """Classification loss (NLL)
         targets dicts must contain the key "labels" containing a tensor of dim [nb_people]
@@ -137,8 +127,6 @@ class SetCriterion(nn.Module):
         return losses
 
     @torch.no_grad()
-    #def loss_cardinality(self, outputs, targets, indices, num_boxes):
-    #Compute the cardinality error, ie the absolute error in the number of predicted non-empty boxes
     def loss_cardinality(self, outputs, targets, indices, num_people):
         """ Compute the cardinality error, ie the absolute error in the number of predicted present people
         This is not really a loss, it is intended for logging purposes only. It doesn't propagate gradients
@@ -151,29 +139,6 @@ class SetCriterion(nn.Module):
         card_err = F.l1_loss(card_pred.float(), tgt_lengths.float())
         losses = {'cardinality_error': card_err}
         return losses
-
-    """
-    def loss_boxes(self, outputs, targets, indices, num_boxes):
-        '''Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
-           targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
-           The target boxes are expected in format (center_x, center_y, w, h), normalized by the image size.
-        '''
-        assert 'pred_boxes' in outputs
-        idx = self._get_src_permutation_idx(indices)
-        src_boxes = outputs['pred_boxes'][idx]
-        target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-
-        loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction='none')
-
-        losses = {}
-        losses['loss_bbox'] = loss_bbox.sum() / num_boxes
-
-        loss_giou = 1 - torch.diag(box_ops.generalized_box_iou(
-            box_ops.box_cxcywh_to_xyxy(src_boxes),
-            box_ops.box_cxcywh_to_xyxy(target_boxes)))
-        losses['loss_giou'] = loss_giou.sum() / num_boxes
-        return losses
-    """
 
     def loss_kpts(self, outputs, targets, indices, num_people):
         """Compute the losses related to the keypoints, the L1 position loss and the L2 class loss
@@ -273,14 +238,9 @@ class SetCriterion(nn.Module):
         losses['loss_deltas'] = loss_deltas.sum() / num_people
         losses['loss_ctrs'] = loss_ctrs.sum() / num_people
         losses['loss_kpts'] = loss_kpts.sum() / num_people
-
-        #losses['loss_boxiou'] = loss_boxiou.sum() / num_people
-        #losses['loss_boxiou'] = loss_boxiou.sum() / (visible_mask[:,1:]==1).sum() # divide by number of visible keypoints in batch
             
         #loss_kpts_classes = F.mse_loss(src_kpts_classes, target_kpts_classes)
         loss_kpts_classes = F.mse_loss(src_kpts_classes, target_kpts_classes, reduction='none')
-        #loss_kpts_classes = F.cross_entropy(src_kpts_classes, target_kpts_classes) # have only one value!
-        #loss_kpts_classes = nn.BCELoss(src_kpts_classes, target_kpts_classes.bool())
         losses['loss_kpts_class'] = loss_kpts_classes.sum() / num_people
 
         return losses
@@ -421,44 +381,6 @@ class SetCriterion(nn.Module):
         return losses
 
 
-    '''
-    #def loss_masks(self, outputs, targets, indices, num_boxes):
-    def loss_masks(self, outputs, targets, indices, num_people):
-        """Compute the losses related to the masks: the focal loss and the dice loss.
-           targets dicts must contain the key "masks" containing a tensor of dim [nb_target_boxes, h, w]
-        """
-        assert "pred_masks" in outputs
-
-        src_idx = self._get_src_permutation_idx(indices)
-        tgt_idx = self._get_tgt_permutation_idx(indices)
-        src_masks = outputs["pred_masks"]
-        src_masks = src_masks[src_idx]
-        masks = [t["masks"] for t in targets]
-        # TODO use valid to mask invalid areas due to padding in loss
-        target_masks, valid = nested_tensor_from_tensor_list(masks).decompose()
-        target_masks = target_masks.to(src_masks)
-        target_masks = target_masks[tgt_idx]
-
-        # upsample predictions to the target size
-        src_masks = interpolate(src_masks[:, None], size=target_masks.shape[-2:],
-                                mode="bilinear", align_corners=False)
-        src_masks = src_masks[:, 0].flatten(1)
-
-        target_masks = target_masks.flatten(1)
-        target_masks = target_masks.view(src_masks.shape)
-        """
-        losses = {
-            "loss_mask": sigmoid_focal_loss(src_masks, target_masks, num_boxes),
-            "loss_dice": dice_loss(src_masks, target_masks, num_boxes),
-        }
-        """
-        losses = {
-            "loss_mask": sigmoid_focal_loss(src_masks, target_masks, num_people),
-            "loss_dice": dice_loss(src_masks, target_masks, num_people),
-        }
-        return losses
-    '''
-
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
         batch_idx = torch.cat([torch.full_like(src, i) for i, (src, _) in enumerate(indices)])
@@ -476,13 +398,10 @@ class SetCriterion(nn.Module):
         loss_map = {
             'labels': self.loss_labels,
             'cardinality': self.loss_cardinality,
-            #'boxes': self.loss_boxes,
             #'keypoints': self.loss_kpts,
             'keypoints': self.loss_kpts if not self.oks else self.loss_kpts_oks,
-            #'masks': self.loss_masks
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
-        #return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
         return loss_map[loss](outputs, targets, indices, num_people, **kwargs)
 
     def forward(self, outputs, targets):
@@ -497,9 +416,7 @@ class SetCriterion(nn.Module):
         # Retrieve the matching between the outputs of the last layer and the targets
         indices = self.matcher(outputs_without_aux, targets)
 
-        # Compute the average number of target boxes accross all nodes, for normalization purposes
-        #num_boxes = sum(len(t["labels"]) for t in targets)
-        #num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
+        # Compute the average number of target individuals accross all nodes, for normalization purposes
         num_people = sum(len(t["labels"]) for t in targets)
         num_people = torch.as_tensor([num_people], dtype=torch.float, device=next(iter(outputs.values())).device)
         if is_dist_avail_and_initialized():
@@ -509,7 +426,6 @@ class SetCriterion(nn.Module):
         # Compute all the requested losses
         losses = {}
         for loss in self.losses:
-            #losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
             losses.update(self.get_loss(loss, outputs, targets, indices, num_people))
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
@@ -517,16 +433,10 @@ class SetCriterion(nn.Module):
             for i, aux_outputs in enumerate(outputs['aux_outputs']):
                 indices = self.matcher(aux_outputs, targets)
                 for loss in self.losses:
-                    """
-                    if loss == 'masks':
-                        # Intermediate masks losses are too costly to compute, we ignore them.
-                        continue
-                    """
                     kwargs = {}
                     if loss == 'labels':
                         # Logging is enabled only for the last layer
                         kwargs = {'log': False}
-                    #l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes, **kwargs)
                     l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_people, **kwargs)
                     l_dict = {k + f'_{i}': v for k, v in l_dict.items()}
                     losses.update(l_dict)
@@ -545,7 +455,6 @@ class PostProcess(nn.Module):
                           For evaluation, this must be the original image size (before any data augmentation)
                           For visualization, this should be the image size after data augment, but before padding
         """
-        #out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
         out_logits, out_kpts = outputs['pred_logits'], outputs['pred_kpts']
 
         assert len(out_logits) == len(target_sizes)
@@ -554,9 +463,6 @@ class PostProcess(nn.Module):
         prob = F.softmax(out_logits, -1)
         scores, labels = prob[..., :-1].max(-1)
         #scores, labels = prob[..., 1].max(-1)
-
-        # convert to [x0, y0, x1, y1] format
-        #boxes = box_ops.box_cxcywh_to_xyxy(out_bbox)
 
         # put offsets back into range [-1,1]
         out_kpts[..., 2::3] = (out_kpts[..., 2::3] - 0.5) * 2
@@ -568,11 +474,8 @@ class PostProcess(nn.Module):
 
         # and from relative [0, 1] to absolute [0, height] coordinates
         img_h, img_w = target_sizes.unbind(1)
-        #scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
-        #boxes = boxes * scale_fct[:, None, :]
         out_kpts[..., 2::3] *= img_w[(...,) + (None,) * 2]
         out_kpts[..., 3::3] *= img_h[(...,) + (None,) * 2]
-        #results = [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(scores, labels, boxes)]
         out_kpts[..., 4::3] = 1 # set visibility to 1 as described in COCO API
         results = [{'scores': s, 'labels': l, 'keypoints': k} for s, l, k
                    in zip(scores, labels, out_kpts[..., 2:])]
@@ -604,44 +507,24 @@ def build(args):
     # you should pass `num_classes` to be 2 (max_obj_id + 1).
     # For more details on this, check the following discussion
     # https://github.com/facebookresearch/detr/issues/108#issuecomment-650269223
-    #num_classes = 20 if args.dataset_file != 'coco' else 91
     num_classes = 2
-    """
-    if args.dataset_file == "coco_panoptic":
-        # for panoptic, we just add a num_classes that is large enough to hold
-        # max_obj_id + 1, but the exact value doesn't really matter
-        num_classes = 250
-    """
+    
     device = torch.device(args.device)
 
     backbone = build_backbone(args)
 
     transformer = build_transformer(args)
 
-    model = DETR(
+    model = POET(
         backbone,
         transformer,
         num_classes=num_classes,
         num_queries=args.num_queries,
         aux_loss=args.aux_loss,
     )
-    """
-    if args.masks:
-        model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
-    """
     matcher = build_matcher(args)
-    #weight_dict = {'loss_ce': 1, 'loss_bbox': args.bbox_loss_coef}
-    #weight_dict['loss_giou'] = args.giou_loss_coef
-    #weight_dict = {'loss_ce': 1, 'loss_kpts': args.kpts_loss_coef, 'loss_kpts_class': args.kpts_class_loss_coef}
-    #weight_dict = {'loss_ce': 1, 'loss_kpts': args.kpts_loss_coef, 'loss_ctrs': args.ctrs_loss_coef,
-    #                'loss_kpts_class': args.kpts_class_loss_coef}
     weight_dict = {'loss_ce': 1, 'loss_kpts': args.kpts_loss_coef, 'loss_ctrs': args.ctrs_loss_coef,
                     'loss_deltas': args.deltas_loss_coef, 'loss_kpts_class': args.kpts_class_loss_coef}
-    """
-    if args.masks:
-        weight_dict["loss_mask"] = args.mask_loss_coef
-        weight_dict["loss_dice"] = args.dice_loss_coef
-    """
     # TODO this is a hack
     if args.aux_loss:
         aux_weight_dict = {}
@@ -649,25 +532,12 @@ def build(args):
             aux_weight_dict.update({k + f'_{i}': v for k, v in weight_dict.items()})
         weight_dict.update(aux_weight_dict)
 
-    #losses = ['labels', 'boxes', 'cardinality']
     losses = ['labels', 'keypoints', 'cardinality']
-    """
-    if args.masks:
-        losses += ["masks"]
-    """
-    #criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
-    #                         eos_coef=args.eos_coef, losses=losses)
+
     criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
                              eos_coef=args.eos_coef, losses=losses, oks=args.oks_loss)
     criterion.to(device)
-    #postprocessors = {'bbox': PostProcess()}
+
     postprocessors = {'kpts': PostProcess()}
-    """
-    if args.masks:
-        postprocessors['segm'] = PostProcessSegm()
-        if args.dataset_file == "coco_panoptic":
-            is_thing_map = {i: i <= 90 for i in range(201)}
-            postprocessors["panoptic"] = PostProcessPanoptic(is_thing_map, threshold=0.85)
-    """
 
     return model, criterion, postprocessors

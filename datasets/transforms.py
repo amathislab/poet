@@ -1,6 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 """
-Transforms and data augmentation for both image + bbox.
+Transforms and data augmentations for images and keypoints/bboxes.
 """
 import random
 import numpy as np
@@ -85,23 +85,12 @@ def crop(image, target, region):
         for field in fields:
             target[field] = target[field][keep]
 
-
-    """
-    if "masks" in target:
-        # FIXME should we update the area here if there are no boxes?
-        target['masks'] = target['masks'][:, i:i + h, j:j + w]
-        fields.append("masks")
-    """
-
-    # remove elements for which the boxes or masks that have zero area
-    if "boxes" in target or "masks" in target:
+    # remove elements for which the boxes  have zero area
+    if "boxes" in target:
         # favor boxes selection when defining which elements to keep
         # this is compatible with previous implementation
-        if "boxes" in target:
-            cropped_boxes = target['boxes'].reshape(-1, 2, 2)
-            keep = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
-        else:
-            keep = target['masks'].flatten(1).any(1)
+        cropped_boxes = target['boxes'].reshape(-1, 2, 2)
+        keep = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
 
         for field in fields:
             target[field] = target[field][keep]
@@ -136,23 +125,14 @@ def hflip(image, target):
 
         target["keypoints"] = keypoints
 
-    """
-    if "masks" in target:
-        target['masks'] = target['masks'].flip(-1)
-    """
-
     return flipped_image, target
 
 
 def rotate(image, target, degree):
 
-    #rotated_image = F.rotate(image, degree)
-
     image = np.asarray(image)
-    #rot = iaa.Affine(rotate=degree)
     angle = torch.FloatTensor(1).uniform_(-degree, degree).item()
     rot = iaa.Affine(rotate=angle)
-    #rot = iaa.Affine(rotate=(-degree,degree))
 
     target = target.copy()
 
@@ -300,12 +280,6 @@ def resize(image, target, size, max_size=None):
     h, w = size
     target["size"] = torch.tensor([h, w])
 
-    """
-    if "masks" in target:
-        target['masks'] = interpolate(
-            target['masks'][:, None].float(), size, mode="nearest")[:, 0] > 0.5
-    """
-
     return rescaled_image, target
 
 
@@ -317,10 +291,6 @@ def pad(image, target, padding):
     target = target.copy()
     # should we do something wrt the original size?
     target["size"] = torch.tensor(padded_image.size[::-1])
-    """
-    if "masks" in target:
-        target['masks'] = torch.nn.functional.pad(target['masks'], (0, padding[0], 0, padding[1]))
-    """
     return padded_image, target
 
 

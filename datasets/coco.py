@@ -199,9 +199,7 @@ def make_coco_transforms(image_set, downsample, max_size=1333):
     ])
 
     if downsample:
-        #normalize = T.Compose([T.RandomResize([200], max_size=1333), normalize])
         normalize = T.Compose([T.RandomResize([200], max_size=max_size), normalize])
-        #normalize = T.Compose([T.RandomResize([(512,512)]), normalize])
 
     scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
 
@@ -211,8 +209,6 @@ def make_coco_transforms(image_set, downsample, max_size=1333):
             #T.RandomRotation([25, 345]),
             T.RandomRotation(25),
             T.RandomCoarseDropout((0.05,0.2), size_percent=(0.015,0.03)),
-            #T.RandomResize(scales, max_size=1333),
-            #T.RandomResize(scales, max_size=max_size),
             T.RandomSelect(
                 #T.RandomResize(scales, max_size=1333),
                 T.RandomResize(scales, max_size=max_size),
@@ -260,8 +256,6 @@ def build(image_set, args):
     
     image_set_ = 'val' if args.overfit else image_set
 
-    #dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=args.masks)
-    #dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=False)
     dataset = CocoDetection(img_folder, ann_file,
                             #transforms=make_coco_transforms(image_set, downsample=args.downsampling),
                             transforms=make_coco_transforms(image_set_, downsample=args.downsampling, max_size=args.max_size),
