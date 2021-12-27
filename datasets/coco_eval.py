@@ -14,7 +14,6 @@ import torch
 
 from pycocotools.cocoeval import COCOeval
 from pycocotools.coco import COCO
-import pycocotools.mask as mask_util
 
 from util.misc import all_gather
 

@@ -103,33 +103,8 @@ class HungarianMatcher(nn.Module):
         tgt_kpts_abs[:, 4::3] = (tgt_kpts_abs[:, 4::3] - 0.5) * 2
         tgt_kpts_abs[:, 3::3] += tgt_kpts_abs[:, 0].clone().unsqueeze_(1)
         tgt_kpts_abs[:, 4::3] += tgt_kpts_abs[:, 1].clone().unsqueeze_(1)
-
-        '''
-        if not any(tgt_kpts[:,0:3].clone().flatten()): # centers are learnt
-            # transform output to absolute values (adding center)
-            x_kpts[:, 1:] = x_kpts[:, 1:] + x_kpts[:, 0].clone().unsqueeze_(1)
-            y_kpts[:, 1:] = y_kpts[:, 1:] + y_kpts[:, 0].clone().unsqueeze_(1)
-            visible_mask = (tgt_kpts[:, 2::3].clone() == 1)
-            out_kpts = torch.stack((x_kpts.unsqueeze(2).expand(-1,-1,num_persons) * visible_mask.T,
-                                    y_kpts.unsqueeze(2).expand(-1,-1,num_persons) * visible_mask.T),
-                                    #dim=2).reshape(-1, 36, num_persons)
-                                    dim=2).reshape(bs*num_queries, 36, num_persons)
-            tgt_kpts = torch.stack((tgt_kpts[:, 0::3].clone() * visible_mask,
-                                    tgt_kpts[:, 1::3].clone() * visible_mask), dim=2).view(-1, 36)
-            # Compute the L1 cost between keypoints positions
-            cost_kpts = torch.empty(x_kpts.shape[0], num_persons).cuda()
-            # Compute the L2 cost between center keypoints (for learnt centers always 0)
-            cost_ctrs = torch.zeros(x_kpts.shape[0], num_persons).cuda()
-            for i in range(num_persons):
-                if not self.oks:
-                    cost_kpts[:, i, None] = torch.cdist(out_kpts[:,2:,i], tgt_kpts[i,2:].unsqueeze(0), p=1)
-            # Compute the L2 cost between keypoints classes.
-            cost_kpts_class = torch.cdist(out_kpts_ids, tgt_kpts_ids, p=2)
-            #cost_kpts_class = F.cross_entropy(out_kpts_ids, tgt_kpts_ids)
-            #cost_kpts_class = nn.BCELoss(out_kpts_ids, tgt_kpts_ids.bool())
-        '''
             
-        #elif all(tgt_kpts[:,2].clone().flatten()): # all centers are visible (e.g. center of mass)
+
         if all(tgt_kpts[:,2].clone().flatten()): # all centers are visible (e.g. center of mass)
             visible_mask = (tgt_kpts[:, 2::3].clone() == 1)
             out_kpts = torch.stack((x_kpts.unsqueeze(2).expand(-1,-1,num_persons) * visible_mask.T,
@@ -224,25 +199,6 @@ class HungarianMatcher(nn.Module):
                 ious = (torch.exp(-e)).sum(dim=1) / e.shape[1]
                 cost_kpts[:, i, None] = torch.cdist(torch.ones(1,len(ious)).cuda(), ious.unsqueeze(0), p=2)
             
-            '''
-            for j in range(len(out_kpts)):
-                for i in range(num_persons):
-                    xg = tgt_kpts[i,2::2]; yg = tgt_kpts[i,3::2]; vg = visible_mask[i,1:]
-                    k1 = vg.sum() # nr of visible keypoints
-                    xd = out_kpts[j,2::2,i]; yd = out_kpts[j,3::2,i]
-                    # measure the per-keypoint distance
-                    dx = xd - xg
-                    dy = yd - yg
-                    e = (dx**2 + dy**2) / vars / (bb_areas[i] + torch.finfo(torch.float64).eps) / 2            
-                    if k1 > 0:
-                        e[torch.where(vg > 0)]
-                    iou = (torch.exp(-e)).sum() / e.shape[0]
-                    cost_kpts[j, i] = (torch.ones(1).cuda() - iou)**2
-                    #cost_kpts[j, i] = F.mse_loss(torch.ones(1), iou)
-                    #cost_kpts[j, i] = torch.cdist(torch.ones(1), iou , p=2)
-                    #cost_kpts[j, i, None] = torch.cdist(out_kpts[j,2:,i], tgt_kpts[i,2:].unsqueeze(0), p=2)
-            '''
-
 
         # Final cost matrix
         C = self.cost_kpts * cost_kpts + self.cost_ctrs * cost_ctrs + self.cost_deltas * cost_deltas + self.cost_class * cost_class + self.cost_kpts_class * cost_kpts_class

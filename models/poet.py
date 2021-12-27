@@ -155,12 +155,6 @@ class SetCriterion(nn.Module):
         src_kpts = outputs['pred_kpts'][idx].clone()
         x_kpts = torch.cat((src_kpts[:, 0].unsqueeze(-1), src_kpts[:, 2::3]), dim=1)
         y_kpts = torch.cat((src_kpts[:, 1].unsqueeze(-1), src_kpts[:, 3::3]), dim=1)
-        '''
-        if not any(target_kpts[:,0:3].clone().flatten()): # centers are learnt
-            # transform output to absolute values (adding center)
-            x_kpts[:, 1:] = x_kpts[:, 1:] + x_kpts[:, 0].clone().unsqueeze_(1)
-            y_kpts[:, 1:] = y_kpts[:, 1:] + y_kpts[:, 0].clone().unsqueeze_(1)
-        '''
 
         # Preparing keypoints for computing loss on absolute positions
         x_kpts_abs, y_kpts_abs = x_kpts.clone(), y_kpts.clone()
@@ -177,19 +171,6 @@ class SetCriterion(nn.Module):
         #src_kpts_classes = torch.sigmoid(outputs['pred_kpts'][idx][:, 4::3]).clone()
         src_kpts_classes = outputs['pred_kpts'][idx][:, 4::3].clone()
         target_kpts_classes = target_kpts[:, 5::3].clone()
-
-        '''
-        if not any(target_kpts[:,0:3].clone().flatten()): # centers are learnt
-            
-            visible_mask = (target_kpts[:, 2::3].clone() == 1)
-            target_kpts_abs = torch.stack(
-                (target_kpts_abs[:, 0::3].clone() * visible_mask, target_kpts_abs[:, 1::3].clone() * visible_mask),
-                                      dim=2).view(-1, 36)
-            src_kpts_abs = torch.stack((x_kpts_abs * visible_mask, y_kpts_abs * visible_mask), dim=2).view(-1, 36)
-            loss_kpts = F.l1_loss(src_kpts_abs[:,2:], target_kpts_abs[:,2:], reduction='none')
-            loss_ctrs = torch.zeros(1)
-            loss_deltas = torch.zeros(1)
-        '''
             
         if all(target_kpts[:,2].clone().flatten()): # all centers are visible (e.g. center of mass)
 
@@ -310,42 +291,6 @@ class SetCriterion(nn.Module):
         ious = torch.zeros(len(target_kpts)).cuda()
         sigmas = torch.tensor([.26,.25,.25,.35,.35,.79,.79,.72,.72,.62,.62,1.07,1.07,.87,.87,.89,.89])/10.0
         vars = ((sigmas * 2)**2).cuda()
-        #k = len(sigmas)
-        
-        '''
-        # compute oks between each detection and ground truth object
-        for j, gt in enumerate(target_kpts):
-            # create bounds for ignore regions(double the gt bbox)
-            xg = gt[2::2]; yg = gt[3::2]; vg = visible_mask[j,1:]
-            k1 = vg.sum() # nr of visible keypoints
-            
-            #bb = target_boxes[j]
-            #x0 = bb[0] - bb[2]; x1 = bb[0] + bb[2] * 2
-            #y0 = bb[1] - bb[3]; y1 = bb[1] + bb[3] * 2
-            #x0 = bb[0]; x1 = bb[2]; y0 = bb[1]; y1 = bb[3]
-
-            xd = src_kpts[j,2::2]; yd = src_kpts[j,3::2]
-
-            # measure the per-keypoint distance
-            dx = xd - xg
-            dy = yd - yg
-                 
-            # if k1 > 0:
-            #     # measure the per-keypoint distance if keypoints visible
-            #     dx = xd - xg
-            #     dy = yd - yg
-            # else:
-            #     # measure minimum distance to keypoints in (x0,y0) & (x1,y1)
-            #     z = torch.zeros(k).cuda()
-            #     dx = torch.amax(torch.stack((z,x0-xd)),dim=0) + torch.amax(torch.stack((z,xd-x1)),dim=0)
-            #     dy = torch.amax(torch.stack((z,y0-yd)),dim=0) + torch.amax(torch.stack((z,yd-y1)),dim=0)
-
-            e = (dx**2 + dy**2) / vars / (target_areas[j] + torch.finfo(torch.float64).eps) / 2
-            if k1 > 0:
-                #e = e[vg > 0]
-                e[torch.where(vg > 0)]
-            ious[j] = (torch.exp(-e)).sum() / e.shape[0]
-        '''
 
         xg = target_kpts[:,2::2]; yg = target_kpts[:,3::2]; vg = visible_mask[:,1:]
         k1 = vg.sum(dim=1) # nr of visible keypoints

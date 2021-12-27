@@ -92,12 +92,10 @@ def get_args_parser():
                         help="Relative classification weight of the no-object class")
 
     # pose estimation
-    parser.add_argument('--hierarchical', default=False, type=bool,
-                        help="hierarchical representation of joints")
+    # parser.add_argument('--hierarchical', default=False, type=bool,
+    #                     help="hierarchical representation of joints")
     parser.add_argument('--kpts_center', default='center_of_mass', type=str,
                         help="definition of individual's joint center")
-    #parser.add_argument('--learn_center', default=False, type=bool,
-    #                    help="learn joint center")
 
     # dataset parameters
     parser.add_argument('--macaquepose', action='store_true',

@@ -16,12 +16,12 @@ from util.kpts_ops import build_HSPR, build_SPR, COCO_CLASSES
 
 
 class CocoDetection(torchvision.datasets.CocoDetection):
-    def __init__(self, img_folder, ann_file, transforms, hierarchical,
-                 kpts_center, return_boxes, return_masks):
+    def __init__(self, img_folder, ann_file, transforms, #hierarchical,
+                 kpts_center, return_boxes):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
-        self.prepare = ConvertCocoPolysToMask(hierarchical, kpts_center,
-                                            return_boxes, return_masks)
+        self.prepare = ConvertCocoPolysToMask(#hierarchical,
+                                              kpts_center, return_boxes)
 
     def __getitem__(self, idx):
         img, target = super(CocoDetection, self).__getitem__(idx)
@@ -55,12 +55,12 @@ def convert_coco_poly_to_mask(segmentations, height, width):
 
 
 class ConvertCocoPolysToMask(object):
-    def __init__(self, hierarchical, kpts_center, return_boxes, return_masks=False):
+    def __init__(self, #hierarchical,
+                 kpts_center, return_boxes):
 
-        self.hierarchical = hierarchical
+        #self.hierarchical = hierarchical
         self.kpts_center = kpts_center
         self.return_boxes = return_boxes
-        self.return_masks = return_masks
 
     def __call__(self, image, target):
         w, h = image.size
@@ -93,9 +93,6 @@ class ConvertCocoPolysToMask(object):
         #keypoints = keypoints[empty_kpts_ind]
 
         #center = keypoints[:, 3:6].clone() # left eye
-        #if self.kpts_center == "learnable" and not self.hierarchical:
-            # set keypoints to zero so that relative positions will be absolute positions
-        #    center = torch.zeros(keypoints[:,0:3].shape)
         if self.kpts_center == "center_of_mass":
             x_ctr = torch.Tensor(np.ma.average(keypoints[:, 0::3].clone(), axis=1,
                                             weights=keypoints[:, 2::3]).filled(0))
@@ -118,10 +115,11 @@ class ConvertCocoPolysToMask(object):
             # if at least one of the shoulders is not visible we set the center visibility to 0
             center[:, 2] = center[:, 2].int()
 
-        if self.hierarchical: # Hierarchical Structured Pose Representation (HSPR)
-            keypoints = build_HSPR(keypoints, center) 
-        else: # Structured Pose Representation (SPR)
-            keypoints = build_SPR(keypoints, center)
+        # if self.hierarchical: # Hierarchical Structured Pose Representation (HSPR)
+        #     keypoints = build_HSPR(keypoints, center) 
+        # else: # Structured Pose Representation (SPR)
+        #     keypoints = build_SPR(keypoints, center)
+        keypoints = build_SPR(keypoints, center)
 
         relative_keypoints = torch.cat((center, keypoints), dim=1)
 
@@ -134,10 +132,6 @@ class ConvertCocoPolysToMask(object):
         # visible_mask = (keypoints[:, 2::3] > 1)
         # kpts_classes = torch.as_tensor(np.tile(np.arange(1, 18), (keypoints.shape[0], 1)))
         # kpts_classes = 2 * kpts_classes - 2 + visible_mask  # 0: (nose,invisible), 1: (nose,visible), 2: (l_eye,..
-
-        if self.return_masks:
-            segmentations = [obj["segmentation"] for obj in anno]
-            masks = convert_coco_poly_to_mask(segmentations, h, w)
 
         # remove annotations without a left eye? change the non-visible labels?
         target = {"labels": classes}
@@ -153,8 +147,6 @@ class ConvertCocoPolysToMask(object):
         keep = (boxes[:, 3] > boxes[:, 1]) & (boxes[:, 2] > boxes[:, 0])
         boxes = boxes[keep]
         classes = classes[keep]
-        if self.return_masks:
-            masks = masks[keep]
         if keypoints is not None:
             keypoints = keypoints[keep]
         target = {}
@@ -164,8 +156,6 @@ class ConvertCocoPolysToMask(object):
         if self.return_boxes:
             target["boxes"] = boxes
 
-        if self.return_masks:
-            target["masks"] = masks
         target["image_id"] = image_id
         """
         if keypoints is not None:
@@ -250,15 +240,11 @@ def build(image_set, args):
         }
 
     img_folder, ann_file = PATHS[image_set]
-
-    #if args.learn_center:
-    #    args.kpts_center = "learnable"
     
     image_set_ = 'val' if args.overfit else image_set
 
     dataset = CocoDetection(img_folder, ann_file,
-                            #transforms=make_coco_transforms(image_set, downsample=args.downsampling),
                             transforms=make_coco_transforms(image_set_, downsample=args.downsampling, max_size=args.max_size),
-                            hierarchical=args.hierarchical,  kpts_center=args.kpts_center,
-                            return_boxes=args.oks_loss, return_masks=False)
+                            #hierarchical=args.hierarchical,
+                            kpts_center=args.kpts_center, return_boxes=args.oks_loss)
     return dataset
