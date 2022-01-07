@@ -1,0 +1,88 @@
+# This file may be used to create an environment using:
+# conda env create -f environment.yml
+# platform: linux-64
+
+name: poet
+
+channels:
+- pytorch
+
+dependencies:
+- python=3.8
+- anaconda
+- pip
+- _libgcc_mutex=0.1
+- _openmp_mutex=4.5
+- blas=1.0
+- bzip2=1.0.8
+- ca-certificates=2021.4.13
+- certifi=2020.12.5
+- cudatoolkit=11.0.221
+- ffmpeg=4.3
+- freetype=2.10.4
+- gmp=6.2.1
+- gnutls=3.6.13
+- jpeg=9b
+- lame=3.100
+- lcms2=2.12
+- ld_impl_linux-64=2.33.1
+- libffi=3.3
+- libgcc-ng=9.3.0
+- libiconv=1.16
+- libpng=1.6.37
+- libstdcxx-ng
+- libtiff=4.1.0
+- libuv=1.41.0
+- llvm-openmp=11.1.0
+- lz4-c=1.9.3
+- mkl=2020.4
+- mkl-service=2.3.0
+- mkl_fft=1.3.0
+- mkl_random=1.2.0
+- ncurses=6.2
+- nettle=3.6
+- ninja=1.10.2
+- numpy=1.19.2
+- numpy-base=1.19.2
+- olefile=0.46
+- openh264=2.1.1
+- openssl=1.1.1k
+- pillow=8.2.0
+- python=3.8.8
+- python_abi=3.8
+- pytorch=1.7.0
+- readline=8.1
+- setuptools=52.0.0
+- six=1.15.0
+- sqlite=3.35.4
+- tk=8.6.10
+- torchaudio=0.7.0
+- torchvision=0.8.0
+- wheel=0.36.2
+- xz=5.2.5
+- zlib=1.2.11
+- zstd=1.4.9
+
+- pip:
+  - cycler==0.10.0
+  - cython==0.29.23
+  - dataclasses==0.6
+  - decorator==4.4.2
+  - future==0.18.2
+  - imageio==2.9.0
+  - imgaug==0.4.0
+  - kiwisolver==1.3.1
+  - matplotlib==3.4.1
+  - networkx==2.5.1
+  - opencv-python==4.5.1.48
+  - pycocotools==2.0.2
+  - pyparsing==2.4.7
+  - python-dateutil==2.8.1
+  - pywavelets==1.1.1
+  - scikit-image==0.18.1
+  - scipy==1.6.2
+  - shapely==1.7.1
+  - tifffile==2021.4.8
+  - timm==0.4.9
+  - tqdm==4.61.0
+  - typing_extensions==3.7.4.3

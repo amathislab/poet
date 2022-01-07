@@ -1,7 +1,7 @@
 **POET**: End-to-End Multi-Instance Pose Estimation with Transformers
 ========
 This repository contains the official implementation of **POET** (**PO**se **E**stimation **T**ransformer) and is build built on top of [DETR](https://github.com/facebookresearch/detr).
-We replace the full complex hand-crafted pose estimation pipeline with a Transformer, and outperform Associative Embedding with a ResNet-50, obtaining **54 mAP** on COCO. Inference in 50 lines of PyTorch.
+We replace the full complex hand-crafted pose estimation pipeline with a Transformer, and outperform Associative Embedding with a ResNet-50, obtaining **54 mAP** on COCO.
 
 ![POET](.github/POET.png)
 
