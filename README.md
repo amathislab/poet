@@ -13,7 +13,7 @@ For details see [End-to-End Trainable Multi-Instance Pose Estimation with Transf
 # Notebooks
 
 We provide a few notebooks to help you get a grasp on POET:
-* [POET's notebook](): Shows how to load a pre-trained model, generate predictions and visualize the attention of the model.
+* [POET's demo notebook](notebooks/poet_demo.ipynb): Shows how to load a pre-trained model, generate predictions and visualize the attention of the model.
 
 
 # License
