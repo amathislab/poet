@@ -85,7 +85,7 @@ def crop(image, target, region):
         for field in fields:
             target[field] = target[field][keep]
 
-    # remove elements for which the boxes  have zero area
+    # remove elements for which the boxes have zero area
     if "boxes" in target:
         # favor boxes selection when defining which elements to keep
         # this is compatible with previous implementation

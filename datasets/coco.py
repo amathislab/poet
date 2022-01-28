@@ -17,7 +17,7 @@ from util.kpts_ops import build_HSPR, build_SPR, COCO_CLASSES
 
 class CocoDetection(torchvision.datasets.CocoDetection):
     def __init__(self, img_folder, ann_file, transforms, #hierarchical,
-                 kpts_center, return_boxes):
+                 kpts_center, return_boxes=False):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(#hierarchical,
@@ -56,7 +56,7 @@ def convert_coco_poly_to_mask(segmentations, height, width):
 
 class ConvertCocoPolysToMask(object):
     def __init__(self, #hierarchical,
-                 kpts_center, return_boxes):
+                 kpts_center, return_boxes=False):
 
         #self.hierarchical = hierarchical
         self.kpts_center = kpts_center
@@ -246,5 +246,5 @@ def build(image_set, args):
     dataset = CocoDetection(img_folder, ann_file,
                             transforms=make_coco_transforms(image_set_, downsample=args.downsampling, max_size=args.max_size),
                             #hierarchical=args.hierarchical,
-                            kpts_center=args.kpts_center, return_boxes=args.oks_loss)
+                            kpts_center=args.kpts_center)
     return dataset

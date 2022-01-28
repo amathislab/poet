@@ -84,7 +84,7 @@ class SetCriterion(nn.Module):
         1) we compute hungarian assignment between ground truth keypoints and the outputs of the model
         2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
     """
-    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses, oks):
+    def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses):
         """ Create the criterion.
         Parameters:
             num_classes: number of object categories, omitting the special no-object category
@@ -92,7 +92,6 @@ class SetCriterion(nn.Module):
             weight_dict: dict containing as key the names of the losses and as values their relative weight.
             eos_coef: relative classification weight applied to the no-object category
             losses: list of all the losses to be applied. See get_loss for list of available losses.
-            oks: whether to use OKS loss for keypoints
         """
         super().__init__()
         self.num_classes = num_classes
@@ -100,7 +99,6 @@ class SetCriterion(nn.Module):
         self.weight_dict = weight_dict
         self.eos_coef = eos_coef
         self.losses = losses
-        self.oks = oks
         empty_weight = torch.ones(self.num_classes + 1)
         empty_weight[-1] = self.eos_coef
         self.register_buffer('empty_weight', empty_weight)
@@ -227,105 +225,6 @@ class SetCriterion(nn.Module):
         return losses
 
 
-# for OKS computation see: https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py#L205-L233
-    def loss_kpts_oks(self, outputs, targets, indices, num_people):
-        """Compute the losses related to the keypoints, the loss on OKS and the L2 class loss
-            + L2 position loss for centers only
-           -- computing binary cross-entropy loss for classes ?? -- 
-           targets dicts must contain the key "keypoints" containing a tensor of dim [num_people, 53]
-           The target keypoints are expected normalized by the image size.
-        """
-        assert 'pred_kpts' in outputs
-        idx = self._get_src_permutation_idx(indices)
-
-        target_kpts = torch.cat([t['keypoints'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        #target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        target_areas = torch.cat([t['area'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        #target_sizes = torch.cat([t['size'] for t, (_, i) in zip(targets, indices)], dim=0)
-        target_sizes = []
-        for t, (_, i) in zip(targets, indices):
-            for _ in range(len(i)):
-                target_sizes.append(torch.tensor([t['size'].tolist()]).cuda())
-        target_sizes = torch.cat(target_sizes, dim=0)
-        #target_sizes = torch.cat([t['orig_size'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        
-        src_kpts = outputs['pred_kpts'][idx].clone()
-        x_kpts = torch.cat((src_kpts[:, 0].unsqueeze(-1), src_kpts[:, 2::3]), dim=1)
-        y_kpts = torch.cat((src_kpts[:, 1].unsqueeze(-1), src_kpts[:, 3::3]), dim=1)
-
-        #src_kpts_classes = torch.sigmoid(outputs['pred_kpts'][idx][:, 4::3]).clone()
-        src_kpts_classes = outputs['pred_kpts'][idx][:, 4::3].clone()
-        target_kpts_classes = target_kpts[:, 5::3].clone()
-    
-        #assert all(target_kpts[:,2].clone().flatten()) # all centers are visible (e.g. center of mass)
-
-        visible_mask = (target_kpts[:, 2::3].clone() == 1)
-        target_kpts = torch.stack(
-            (target_kpts[:, 0::3].clone() * visible_mask, target_kpts[:, 1::3].clone() * visible_mask),
-                                    dim=2).view(-1, 36)
-        src_kpts = torch.stack((x_kpts * visible_mask, y_kpts * visible_mask), dim=2).view(-1, 36)
-        
-        loss_ctrs = F.mse_loss(src_kpts[:,:2].clone(), target_kpts[:,:2].clone(), reduction='none')
-        loss_deltas = F.l1_loss(src_kpts[:,2:].clone(), target_kpts[:,2:].clone(), reduction='none')
-
-        src_kpts_classes[torch.where(visible_mask[:, 0] == 0)] = 0
-        target_kpts_classes[torch.where(visible_mask[:, 0] == 0)] = 0
-        
-        # we want to compute the oks loss on absolute positions
-        src_kpts[..., 2::2] = (src_kpts[..., 2::2] - 0.5) * 2
-        src_kpts[..., 3::2] = (src_kpts[..., 3::2] - 0.5) * 2
-        src_kpts[..., 2::2] += src_kpts[..., 0].clone().unsqueeze_(1)
-        src_kpts[..., 3::2] += src_kpts[..., 1].clone().unsqueeze_(1)
-        target_kpts[..., 2::2] = (target_kpts[..., 2::2] - 0.5) * 2
-        target_kpts[..., 3::2] = (target_kpts[..., 3::2] - 0.5) * 2
-        target_kpts[..., 2::2] += target_kpts[..., 0].clone().unsqueeze_(1)
-        target_kpts[..., 3::2] += target_kpts[..., 1].clone().unsqueeze_(1)
-
-        # OKS is computed on absolute image coordinates, so we transform back the normalized coordinates
-        img_h, img_w = target_sizes.unbind(1)
-        src_kpts[..., 0::2] *= img_w[(...,) + (None,)]
-        src_kpts[..., 1::2] *= img_h[(...,) + (None,)]
-        target_kpts[..., 0::2] *= img_w[(...,) + (None,)]
-        target_kpts[..., 1::2] *= img_h[(...,) + (None,)]
-
-        ious = torch.zeros(len(target_kpts)).cuda()
-        sigmas = torch.tensor([.26,.25,.25,.35,.35,.79,.79,.72,.72,.62,.62,1.07,1.07,.87,.87,.89,.89])/10.0
-        vars = ((sigmas * 2)**2).cuda()
-
-        xg = target_kpts[:,2::2]; yg = target_kpts[:,3::2]; vg = visible_mask[:,1:]
-        k1 = vg.sum(dim=1) # nr of visible keypoints
-
-        xd = src_kpts[:,2::2]; yd = src_kpts[:,3::2]
-
-        # measure the per-keypoint distance
-        dx = xd - xg
-        dy = yd - yg
-
-        e = (dx**2 + dy**2) / vars / (target_areas.unsqueeze(-1) + torch.finfo(torch.float64).eps) / 2
-        for i, k1_ in enumerate(k1):
-            if k1_ > 0:
-                e_ = e[i, vg[i] > 0]
-            else:
-                e_ = e[i]
-            ious[i] = (torch.exp(-e_)).sum() / e_.shape[0]
-
-        loss_kpts = F.mse_loss(torch.ones(len(target_kpts)).cuda(), ious, reduction='none')
-
-        losses = {}
-        losses['loss_kpts'] = loss_kpts.sum() / num_people
-        losses['loss_ctrs'] = loss_ctrs.sum() / num_people
-        losses['loss_deltas'] = loss_deltas.sum() / num_people
-            
-        loss_kpts_classes = F.mse_loss(src_kpts_classes, target_kpts_classes, reduction='none')
-        losses['loss_kpts_class'] = loss_kpts_classes.sum() / num_people
-
-        # for logging/testing purposes
-        ious_ = ious[ious!=1]
-        losses['mOKS'] = ious_.sum()/len(ious_)
-
-        return losses
-
-
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
         batch_idx = torch.cat([torch.full_like(src, i) for i, (src, _) in enumerate(indices)])
@@ -343,8 +242,7 @@ class SetCriterion(nn.Module):
         loss_map = {
             'labels': self.loss_labels,
             'cardinality': self.loss_cardinality,
-            #'keypoints': self.loss_kpts,
-            'keypoints': self.loss_kpts if not self.oks else self.loss_kpts_oks,
+            'keypoints': self.loss_kpts
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_people, **kwargs)
@@ -480,7 +378,7 @@ def build(args):
     losses = ['labels', 'keypoints', 'cardinality']
 
     criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
-                             eos_coef=args.eos_coef, losses=losses, oks=args.oks_loss)
+                             eos_coef=args.eos_coef, losses=losses)
     criterion.to(device)
 
     postprocessors = {'kpts': PostProcess()}

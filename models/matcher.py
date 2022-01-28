@@ -4,8 +4,8 @@ Modules to compute the matching cost and solve the corresponding LSAP.
 """
 import torch
 #import torch.nn.functional as F
-from scipy.optimize import linear_sum_assignment
 from torch import nn
+from scipy.optimize import linear_sum_assignment
 
 #from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 
@@ -19,7 +19,7 @@ class HungarianMatcher(nn.Module):
     """
 
     def __init__(self, cost_class: float = 1, cost_kpts: float = 1, cost_ctrs: float = 1,
-                cost_deltas: float = 1, cost_kpts_class: float = 1, oks = False):
+                cost_deltas: float = 1, cost_kpts_class: float = 1):
         """Creates the matcher
 
         Params:
@@ -34,7 +34,6 @@ class HungarianMatcher(nn.Module):
         self.cost_deltas = cost_deltas
         self.cost_kpts_class = cost_kpts_class
         assert cost_class != 0 or cost_kpts != 0 or cost_kpts_class != 0, "all costs cant be 0"
-        self.oks = oks
 
     @torch.no_grad()
     def forward(self, outputs, targets):
@@ -68,15 +67,6 @@ class HungarianMatcher(nn.Module):
         # Also concat the target labels and boxes
         tgt_ids = torch.cat([v["labels"] for v in targets])
         tgt_kpts = torch.cat([v["keypoints"] for v in targets])
-
-        if self.oks:
-            #img_sizes = torch.cat([torch.tensor([v['size'].tolist()]) for v in targets])
-            img_sizes = []
-            for v in targets:
-                for _ in range(len(v['labels'])):
-                    img_sizes.append(torch.tensor([v['size'].tolist()]).cuda())
-            img_sizes = torch.cat(img_sizes)
-            bb_areas = torch.cat([v["area"] for v in targets])
 
         num_persons = tgt_kpts.shape[0]
 
@@ -125,8 +115,7 @@ class HungarianMatcher(nn.Module):
             for i in range(num_persons):
                 cost_deltas[:, i, None] = torch.cdist(out_kpts[:,2:,i], tgt_kpts[i,2:].unsqueeze(0), p=1)
                 #cost_deltas[:, i, None] = torch.cdist(out_kpts[:,:,i], tgt_kpts[i,:].unsqueeze(0), p=1)
-                if not self.oks:
-                    cost_kpts[:, i, None] = torch.cdist(out_kpts_abs[:,2:,i], tgt_kpts_abs[i,2:].unsqueeze(0), p=1)
+                cost_kpts[:, i, None] = torch.cdist(out_kpts_abs[:,2:,i], tgt_kpts_abs[i,2:].unsqueeze(0), p=1)
                 cost_ctrs[:, i, None] = torch.cdist(out_kpts[:,:2,i], tgt_kpts[i,:2].unsqueeze(0), p=2)
 
             # Compute the L2 cost between keypoints classes
@@ -162,42 +151,11 @@ class HungarianMatcher(nn.Module):
                 cost_deltas[:, i, None] = torch.cdist(out_kpts[:,2:,i], tgt_kpts[i,2:].unsqueeze(0), p=1)
                 #cost_deltas[:, i, None] = torch.cdist(out_kpts[:,:,i], tgt_kpts[i,:].unsqueeze(0), p=1)
                 # L1 cost of keypoints
-                if not self.oks:
-                    cost_kpts[:, i, None] = torch.cdist(out_kpts_abs[:,2:,i], tgt_kpts_abs[i,2:].unsqueeze(0), p=1)
+                cost_kpts[:, i, None] = torch.cdist(out_kpts_abs[:,2:,i], tgt_kpts_abs[i,2:].unsqueeze(0), p=1)
                 # L2 cost of center keypoints
                 cost_ctrs[:, i, None] = torch.cdist(out_kpts[:,:2,i], tgt_kpts[i,:2].unsqueeze(0), p=2)
                 # L2 cost of keypoint classes
                 cost_kpts_class[:, i, None] = torch.cdist(src_kpts_ids, target_kpts_ids[i,:].unsqueeze(0), p=2)
-
-
-        if self.oks:
-            #tgt_kpts = tgt_kpts.clone()
-            #out_kpts = out_kpts.clone()
-            #cost_kpts = torch.empty(x_kpts.shape[0], num_persons).cuda()
-
-            # OKS is computed on absolute image coordinates, so we transform back the normalized coordinates
-            img_h, img_w = img_sizes.unbind(1)
-            out_kpts[..., 0::2, :] = out_kpts_abs[..., 0::2, :].clone() * img_w[(None,)*2 + (...,)]
-            out_kpts[..., 1::2, :] = out_kpts_abs[..., 1::2, :].clone() * img_h[(None,)*2 + (...,)]
-            tgt_kpts[..., 0::2] = tgt_kpts_abs[..., 0::2].clone() * img_w[(...,) + (None,)]
-            tgt_kpts[..., 1::2] = tgt_kpts_abs[..., 1::2].clone() * img_h[(...,) + (None,)]
-
-            sigmas = torch.tensor([.26,.25,.25,.35,.35,.79,.79,.72,.72,.62,.62,1.07,1.07,.87,.87,.89,.89])/10.0
-            vars = ((sigmas * 2)**2).cuda()
-            
-            #for j in range(len(out_kpts)):
-            for i in range(num_persons):
-                xg = tgt_kpts[i,2::2]; yg = tgt_kpts[i,3::2]; vg = visible_mask[i,1:]
-                k1 = vg.sum() # nr of visible keypoints
-                xd = out_kpts[:,2::2,i]; yd = out_kpts[:,3::2,i]
-                # measure the per-keypoint distance
-                dx = xd - xg
-                dy = yd - yg
-                e = (dx**2 + dy**2) / vars / (bb_areas[i] + torch.finfo(torch.float64).eps) / 2
-                if k1 > 0:
-                    e = e[:, torch.where(vg > 0)[0]]
-                ious = (torch.exp(-e)).sum(dim=1) / e.shape[1]
-                cost_kpts[:, i, None] = torch.cdist(torch.ones(1,len(ious)).cuda(), ious.unsqueeze(0), p=2)
             
 
         # Final cost matrix
@@ -211,4 +169,4 @@ class HungarianMatcher(nn.Module):
 
 def build_matcher(args):
     return HungarianMatcher(cost_class=args.set_cost_class, cost_kpts=args.set_cost_kpts, cost_ctrs=args.set_cost_ctrs,
-                            cost_deltas=args.set_cost_deltas, cost_kpts_class=args.set_cost_kpts_class, oks=args.oks_loss)
+                            cost_deltas=args.set_cost_deltas, cost_kpts_class=args.set_cost_kpts_class)
