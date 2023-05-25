@@ -19,6 +19,11 @@ class CocoDetection(torchvision.datasets.CocoDetection):
     def __init__(self, img_folder, ann_file, transforms, #hierarchical,
                  kpts_center, return_boxes=False):
         super(CocoDetection, self).__init__(img_folder, ann_file)
+        self.ids = [
+            img_id
+            for img_id in self.ids
+            if len(self.coco.getAnnIds(imgIds=img_id, iscrowd=None)) > 0
+        ]
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(#hierarchical,
                                               kpts_center, return_boxes)
