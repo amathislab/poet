@@ -12,14 +12,9 @@ For details see our article [End-to-End Trainable Multi-Instance Pose Estimation
 
 ## Inference 
 
-Download of a trained model:
-[POET-R50](https://zenodo.org/record/7972042)
+Download of POET model trained on COCO: [POET-R50](https://zenodo.org/record/7972042)
 
-## Notebooks
-
-We furthermore provide a demo notebook to help you get a grasp on POET:
-* [POET's demo notebook](notebooks/poet_demo.ipynb): Shows how to load a pre-trained model, generate predictions and visualize the attention of the model.
-
+An example of how to use it is given in the demo notebook which loads the pre-trained model, generate predictions and visualizese them: [POET's demo notebook](notebooks/poet_demo.ipynb)
 
 ## Training 
 
